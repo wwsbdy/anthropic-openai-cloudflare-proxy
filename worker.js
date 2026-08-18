@@ -129,6 +129,7 @@ function convertClaudeToOpenAIRequest(claude) {
     stop: claude.stop_sequences,
     stream: Boolean(claude.stream),
   };
+  if (claude.stream) result.stream_options = { include_usage: true };
   for (const key of Object.keys(result)) if (result[key] === undefined) delete result[key];
 
   if (Array.isArray(claude.tools)) {
@@ -197,6 +198,7 @@ function openAIStreamToAnthropic(model) {
   let started = false;
   let done = false;
   let finishReason = "stop";
+  let usage = { prompt_tokens: 0, completion_tokens: 0 };
   const tools = new Map();
   const send = (controller, event, data) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
   const start = (controller) => {
@@ -212,7 +214,11 @@ function openAIStreamToAnthropic(model) {
     send(controller, "content_block_stop", { type: "content_block_stop", index: 0 });
     for (const tool of tools.values()) if (tool.started) send(controller, "content_block_stop", { type: "content_block_stop", index: tool.anthropicIndex });
     const reason = finishReason === "tool_calls" ? "tool_use" : finishReason === "length" ? "max_tokens" : "end_turn";
-    send(controller, "message_delta", { type: "message_delta", delta: { stop_reason: reason, stop_sequence: null }, usage: { output_tokens: 0 } });
+    send(controller, "message_delta", {
+      type: "message_delta",
+      delta: { stop_reason: reason, stop_sequence: null },
+      usage: { input_tokens: usage.prompt_tokens || 0, output_tokens: usage.completion_tokens || 0 },
+    });
     send(controller, "message_stop", { type: "message_stop" });
   };
   const processEvent = (event, controller) => {
@@ -221,6 +227,7 @@ function openAIStreamToAnthropic(model) {
     if (data === "[DONE]") return finish(controller);
     let chunk;
     try { chunk = JSON.parse(data); } catch { return; }
+    if (chunk.usage) usage = chunk.usage;
     const choice = chunk.choices?.[0];
     if (!choice) return;
     if (choice.finish_reason) finishReason = choice.finish_reason;
