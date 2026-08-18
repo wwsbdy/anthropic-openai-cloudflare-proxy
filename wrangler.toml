@@ -1,0 +1,10 @@
+#name = "claude-code-proxy"
+name = "claude-proxy"
+main = "worker.js"
+compatibility_date = "2024-03-20"
+
+[vars]
+TARGET_API_BASE_URL = "https://api.openai.com/v1"
+
+[observability.logs]
+enabled = true
